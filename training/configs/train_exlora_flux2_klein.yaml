@@ -1,0 +1,77 @@
+tracker_name: visual-analogy
+wandb_run_name: "exlora_flux2_klein_analogy_selective"
+
+output_dir: "experiments/exlora_flux2_klein"
+
+# Stage 1 (AnaLoRA) checkpoint loaded before injecting ExLoRA
+analora_path: "experiments/analora_flux2_klein/checkpoint-15000"
+
+pretrained_model_name_or_path: "black-forest-labs/FLUX.2-klein-base-9B"
+
+data_root: "data"
+
+# Training (and inference) image resolution — must be a multiple of 16.
+# Keep in sync with infer_single.py --cell_size.
+resolution: 512
+
+seed: 0
+checkpointing_steps: 500
+validation_steps: 100
+
+validation_lora_scales: [-1, -0.5, 0, 0.5, 1]
+num_val_inference_steps: 28
+
+lora_rank: 16
+lora_dropout: 0.0
+lora_name: "visual-analogy-lora"
+
+resume_from_checkpoint: true
+max_train_steps: 20000
+
+lr_warmup_steps: 0
+learning_rate: 5e-5
+analora_learning_rate: 5e-5
+analora_step_ratio: 0.333
+analora_anchor_weight: 0.1
+train_batch_size: 18
+gradient_accumulation_steps: 1
+# guidance_scale is unused for Klein (Klein does not support CFG guidance)
+max_grad_norm: 1
+# Timestep sampling range — keep aligned with scheduler's 1000 steps
+max_train_timesteps: 1000
+min_train_timesteps: 0
+
+# Ablation: "concat" (default, separate images T=10/20/30) or "grid" (2x2 spatial grid)
+analogy_mode: "concat"
+
+# --- Inference-only: time-varying schedule for the text-embedding steering alpha
+# Each entry is [step_boundary, alpha]; for denoising step index t the first
+# entry with t < step_boundary wins (piecewise-constant, left-closed).
+# When set, this overrides --embedding_scales in infer_single.py and runs one
+# inference per (suppress-mode × exlora-scale). Remove or comment out to fall
+# back to the constant-alpha sweep.
+# embedding_schedule:
+#   - [10, -40.0]   # steps  0- 9 -> alpha = -40
+#   - [20, -30.0]   # steps 10-19 -> alpha = -30
+#   - [28, -20.0]   # steps 20-27 -> alpha = -20
+
+# --- Inference-only: where to add the text-embedding steering vector.
+#   "tokens" : only at the suppressed edit's own token positions (same
+#              footprint as ExLoRA — default, minimal intervention).
+#   "prompt" : at every non-padding prompt token (pushes against residue
+#              that leaked into surrounding tokens through the encoder's
+#              self-attention).
+# Pass a list to sweep both as an ablation — each scope gets its own output
+# subdirectory (out/scope_tokens/, out/scope_prompt/).
+# csv_scope: "tokens"
+# csv_scope: ["tokens", "prompt"]
+
+# --- Inference-only: how the steering vector modifies the prompt embedding.
+#   "add"    : x' = x + alpha * v_hat           (pure additive push; default)
+#   "ablate" : x' = x - (x . v_hat) v_hat
+#                    + alpha * v_hat             (directional ablation + push)
+# 'ablate' first projects the concept component OUT of x (deleting it from
+# that 1-D subspace regardless of its magnitude), then adds a controlled
+# anti-push. Usually dramatically stronger than 'add' at the same |alpha| —
+# when switching, reduce embedding_scale_factor and the schedule alphas.
+# csv_mode: "ablate"
